@@ -19,11 +19,19 @@ package org.springframework.cloud.dataflow.server.repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 import javax.sql.DataSource;
 
+import javafx.concurrent.Task;
 import org.springframework.cloud.dataflow.core.TaskDefinition;
+import org.springframework.cloud.dataflow.server.repository.support.SearchPageable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.Assert;
 
 /**
@@ -39,9 +47,11 @@ public class RdbmsTaskDefinitionRepository extends AbstractRdbmsKeyValueReposito
 		super(dataSource, "TASK_", "DEFINITIONS", new RowMapper<TaskDefinition>() {
 			@Override
 			public TaskDefinition mapRow(ResultSet resultSet, int i) throws SQLException {
-				return new TaskDefinition(resultSet.getString("DEFINITION_NAME"), resultSet.getString("DEFINITION"));
+				return new TaskDefinition(resultSet.getString("DEFINITION_NAME"),
+                                          resultSet.getString("DEFINITION"));
 			}
 		}, "DEFINITION_NAME", "DEFINITION");
+        saveRow = "INSERT into " + tableName + "(DEFINITION_NAME, DEFINITION, CREATOR)" + "values (?, ?, ?)";
 	}
 
 	@Override
@@ -52,8 +62,9 @@ public class RdbmsTaskDefinitionRepository extends AbstractRdbmsKeyValueReposito
 					"Cannot register task %s because another one has already " + "been registered with the same name",
 					definition.getName()));
 		}
-		Object[] insertParameters = new Object[] { definition.getName(), definition.getDslText() };
-		jdbcTemplate.update(saveRow, insertParameters, new int[] { Types.VARCHAR, Types.CLOB });
+        final String creator = SecurityContextHolder.getContext().getAuthentication().getName();
+		Object[] insertParameters = new Object[] { definition.getName(), definition.getDslText(), creator };
+		jdbcTemplate.update(saveRow, insertParameters, new int[] { Types.VARCHAR, Types.CLOB, Types.VARCHAR });
 		return definition;
 	}
 
@@ -62,4 +73,52 @@ public class RdbmsTaskDefinitionRepository extends AbstractRdbmsKeyValueReposito
 		Assert.notNull(definition, "definition must not null");
 		delete(definition.getName());
 	}
+
+    @Override
+    public Page<TaskDefinition> search(SearchPageable searchPageable) {
+        Assert.notNull(searchPageable, "searchPageable must not be null.");
+
+        final StringBuilder whereClause = new StringBuilder("WHERE ");
+        final List<String> params = new ArrayList<>();
+        final String creator = SecurityContextHolder.getContext().getAuthentication().getName();
+        if (creator != null) {
+            whereClause.append("creator = ? ");
+            params.add(creator);
+        }
+        final Iterator<String> columnIterator = searchPageable.getColumns().iterator();
+        if (columnIterator.hasNext()) {
+            whereClause.append("AND (");
+            while (columnIterator.hasNext()) {
+                whereClause.append("lower(" + columnIterator.next()).append(") like ").append("lower(?)");
+                params.add("%" + searchPageable.getSearchQuery() + "%");
+                if (columnIterator.hasNext()) {
+                    whereClause.append(" OR ");
+                }
+            }
+            whereClause.append(")");
+        }
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT ").append(" ").append(selectClause);
+        sql.append(" FROM ").append(tableName);
+        sql.append(whereClause == null ? "" : whereClause);
+
+        String query = sql.toString();
+        List<TaskDefinition> result = jdbcTemplate.query(query, params.toArray(), rowMapper);
+        return queryForPageableResults(searchPageable.getPageable(), selectClause, tableName, whereClause.toString(),
+                params.toArray(), result.size());
+    }
+
+    @Override
+    public Page<TaskDefinition> findAll(Pageable pageable) {
+        Assert.notNull(pageable, "pageable must not be null");
+        final StringBuilder whereClause = new StringBuilder("");
+        final List<String> params = new ArrayList<>();
+        final String creator = SecurityContextHolder.getContext().getAuthentication().getName();
+        if (creator != null) {
+            whereClause.append("WHERE creator = ? ");
+            params.add(creator);
+        }
+        return queryForPageableResults(pageable, selectClause, tableName, whereClause.toString(), params.toArray(), count());
+    }
 }

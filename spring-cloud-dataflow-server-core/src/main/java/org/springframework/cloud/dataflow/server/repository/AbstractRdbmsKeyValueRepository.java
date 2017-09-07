@@ -256,7 +256,7 @@ public abstract class AbstractRdbmsKeyValueRepository<D> implements PagingAndSor
 		return StringUtils.replace(updatedPrefix, "%SUFFIX%", tableSuffix);
 	}
 
-	private Page<D> queryForPageableResults(Pageable pageable, String selectClause, String tableName,
+	protected Page<D> queryForPageableResults(Pageable pageable, String selectClause, String tableName,
 			String whereClause, Object[] queryParam, long totalCount) {
 		// FIXME Possible performance improvement refactoring so factory isn't called
 		// every time.

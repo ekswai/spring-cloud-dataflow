@@ -33,6 +33,7 @@ import org.springframework.hateoas.ExposesResourceFor;
 import org.springframework.hateoas.PagedResources;
 import org.springframework.hateoas.mvc.ResourceAssemblerSupport;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.Assert;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -109,6 +110,7 @@ public class TaskDefinitionController {
 	 */
 	@RequestMapping(value = "", method = RequestMethod.POST)
 	public TaskDefinitionResource save(@RequestParam("name") String name, @RequestParam("definition") String dsl) {
+	    String creator = SecurityContextHolder.getContext().getAuthentication().getName();
 		TaskDefinition taskDefinition = new TaskDefinition(name, dsl);
 		taskService.saveTaskDefinition(name, dsl);
 		return taskAssembler.toResource(taskDefinition);
